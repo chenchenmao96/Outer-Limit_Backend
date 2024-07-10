@@ -155,7 +155,9 @@ app.get("/api/getuser_fake_comments_infakepost", async function (req, res) {
       "user_comment_in_fake_post.where_to_insert": 1,
       "user_comment_in_fake_post.post_url": 1 , 
       "user_comment_in_fake_post.like": 1,
-      "user_comment_in_fake_post.time":1
+      "user_comment_in_fake_post.time":1,
+      "user_comment_in_fake_post.profile":1
+      
     };
 
     const result = await collection.find(query).project(projection).toArray();
@@ -190,6 +192,7 @@ app.post("/api/updateuserFakeComment_infakepost", async function (req, res) {
           post_url: req.body.user_comment_in_fake_post[0].post_url,
           like:req.body.user_comment_in_fake_post[0].like,
           time:req.body.user_comment_in_fake_post[0].time,
+          profile:req.body.user_comment_in_fake_post[0].profile,
         }
       }
     };
@@ -620,6 +623,7 @@ app.post("/api/updateUserReplyToFakeComment", async function (req, res) {
             userReplyInFake: req.body.user_reply_tofakecomment[0].userReplyInFake,
             like:req.body.user_reply_tofakecomment[0].like,
             time:req.body.user_reply_tofakecomment[0].time,
+            profile:req.body.user_reply_tofakecomment[0].profile,
           }
         }
       };
