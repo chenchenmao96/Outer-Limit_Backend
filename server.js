@@ -118,7 +118,8 @@ app.get("/api/fake_comments", async function (req, res) {
       "ordinal_position": 1,
       "post_url": 1,
       "like":1,
-      "time":1
+      "time":1,
+      "profile":1
     };
 
     const result = await collection.find(query).project(projection).toArray();
