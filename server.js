@@ -84,7 +84,7 @@ app.post("/api/insert", async function (req, res) {
 
 /////////  where we define fake comments on fake posts and fake post 
 
-app.get("/api/fake_posts", async function (req, res) {
+app.get("/api/getfakepost", async (req, res) => {
   const client = new MongoClient(uri, { useUnifiedTopology: true });
 
   try {
@@ -93,31 +93,29 @@ app.get("/api/fake_posts", async function (req, res) {
     const database = client.db('reddit');
     const collection = database.collection('fakepost');
 
-    // Query for all fake posts without any filtering
-    const query = {};
-    const projection = {
-      "fakepost_url": 1,
-      "fakepost_index": 1,
-      "fakepost_title": 1,
-      "fakepost_content": 1,
-      "fakepost_image": 1,
-      "fakepost_like": 1,
-      "fakepost_time": 1,
-      "fakepost_community":1,
-      "fakepost_poster":1,
-    };
+    // Extract the fakepost_url from query parameters
+    const fakepost_url = req.query.fakepost_url;
 
-    const result = await collection.find(query).project(projection).toArray();
+    if (!fakepost_url) {
+      return res.status(400).json({ error: "fakepost_url is required" });
+    }
 
-    return res.json(result);
+    // Find the fake post by its fakepost_url
+    const fakePost = await collection.findOne({ fakepost_url: fakepost_url });
+
+    if (!fakePost) {
+      return res.status(404).json({ error: "Fake post not found" });
+    }
+
+    // Return the fake post including the comments inside it
+    return res.json(fakePost);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to retrieve fake post from the database" });
+    return res.status(500).json({ error: "Failed to retrieve the fake post" });
   } finally {
     await client.close();
   }
 });
-
 
 
 
@@ -168,15 +166,52 @@ app.post("/api/createfakepost", async (req, res) => {
     const database = client.db('reddit');
     const collection = database.collection('fakepost');
 
-    // Insert new data into the collection
-    const result = await collection.insertOne(req.body);
+    // Create the fake post object with an empty fake_comments array if not provided
+    const newFakePost = {
+      ...req.body,
+      fake_comments: req.body.fake_comments || []  // Ensure fake_comments is initialized as an array
+    };
+
+    // Insert new fake post data into the collection
+    const result = await collection.insertOne(newFakePost);
 
     return res.json({ insertedId: result.insertedId });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to insert data into the database" });
   } finally {
-    // Ensures that the client will close when you finish/error
+    // Ensure that the client will close after the operation
+    await client.close();
+  }
+});
+/// insert fake comments inside the fake post 
+app.post("/api/addfakecomment/:postId", async (req, res) => {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+
+    const database = client.db('reddit');
+    const collection = database.collection('fakepost');
+
+    const postId = req.params.postId; // The fake post ID passed as a parameter
+    const newComment = req.body; // The new comment data sent in the request body
+
+    // Find the fake post and add the new comment to the fake_comments array
+    const result = await collection.updateOne(
+      { fakepost_id: postId }, // Find the post by fakepost_id
+      { $push: { fake_comments: newComment } } // Add the new comment to the fake_comments array
+    );
+
+    if (result.modifiedCount === 1) {
+      return res.json({ message: "Comment added successfully" });
+    } else {
+      return res.status(404).json({ error: "Fake post not found" });
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to add comment to the fake post" });
+  } finally {
     await client.close();
   }
 });
