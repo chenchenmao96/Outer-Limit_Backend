@@ -59,6 +59,31 @@ app.get("/api/data", async function (req, res) {
 });
 
 
+// Define the second route to initalze the database
+app.post("/api/insert", async function (req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  
+  try {
+    await client.connect();
+
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+
+    // Insert new data into the collection
+    const result = await collection.insertOne(req.body);
+
+    return res.json({ insertedId: result.insertedId });
+  } catch(err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to insert data into the database" });
+  } finally {
+    // Ensures that the client will close when you finish/error
+    await client.close();
+  }
+});
+
+/////////  where we define fake comments on fake posts and fake post 
+
 app.get("/api/fake_posts", async function (req, res) {
   const client = new MongoClient(uri, { useUnifiedTopology: true });
 
@@ -118,8 +143,7 @@ app.get("/api/fake_comments", async function (req, res) {
       "ordinal_position": 1,
       "post_url": 1,
       "like":1,
-      "time":1,
-      "profile":1
+      "time":1
     };
 
     const result = await collection.find(query).project(projection).toArray();
@@ -133,136 +157,6 @@ app.get("/api/fake_comments", async function (req, res) {
   }
 });
 
-// Define the route to retrieve fake_comments for a specific userid
-app.get("/api/getuser_fake_comments_infakepost", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
-
-  try {
-    await client.connect();
-
-    const database = client.db('reddit');
-    const collection = database.collection('users');
-
-    const userid = req.query.userid; // Get the userid from the query parameter
-
-    // Query for fake_comments data from the collection with the userid filter
-    const query = { userid: userid };
-    const projection = {
-      _id: 0,
-      "user_comment_in_fake_post.fake_comment_id": 1,
-      "user_comment_in_fake_post.user_name": 1,
-      "user_comment_in_fake_post.content": 1,
-      "user_comment_in_fake_post.where_to_insert": 1,
-      "user_comment_in_fake_post.post_url": 1 , 
-      "user_comment_in_fake_post.like": 1,
-      "user_comment_in_fake_post.time":1,
-      "user_comment_in_fake_post.profile":1
-      
-    };
-
-    const result = await collection.find(query).project(projection).toArray();
-
-    return res.json(result);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to retrieve user_fake_comments_infakepost from the database" });
-  } finally {
-    await client.close();
-  }
-});
-
-app.post("/api/updateuserFakeComment_infakepost", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
-
-  try {
-    await client.connect();
-
-    const database = client.db('reddit');
-    const collection = database.collection('users');
-
-    const filter = { userid: req.body.userid };
-    const update = {
-      $push: {
-        user_comment_in_fake_post:{
-          fake_comment_id: req.body.user_comment_in_fake_post[0].fake_comment_id,
-          user_name: req.body.user_comment_in_fake_post[0].user_name,
-          content: req.body.user_comment_in_fake_post[0].content,
-          where_to_insert: req.body.user_comment_in_fake_post[0].where_to_insert,
-          ordinal_position: req.body.user_comment_in_fake_post[0].ordinal_position,
-          post_url: req.body.user_comment_in_fake_post[0].post_url,
-          like:req.body.user_comment_in_fake_post[0].like,
-          time:req.body.user_comment_in_fake_post[0].time,
-          profile:req.body.user_comment_in_fake_post[0].profile,
-        }
-      }
-    };
-
-    const result = await collection.updateOne(filter, update);
-
-    return res.json({ updatedCount: result.modifiedCount });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to update fake comment in the database" });
-  } finally {
-    await client.close();
-  }
-});
-
-// Define the route to retrieve user_reply_tofakecomment for a specific userid
-app.get("/api/user_reply_tofakecomment", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
-
-  try {
-    await client.connect();
-
-    const database = client.db('reddit');
-    const collection = database.collection('users');
-
-    const userid = req.query.userid; // Get the userid from the query parameter
-
-    // Query for user_reply_tofakecomment data from the collection with the userid filter
-    const query = { userid: userid };
-    const projection = {
-      _id: 0,
-      user_reply_tofakecomment: 1
-    };
-
-    const result = await collection.find(query).project(projection).toArray();
-
-    return res.json(result);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to retrieve user_reply_tofakecomment from the database" });
-  } finally {
-    await client.close();
-  }
-});
-
-
-
-
-// Define the second route to initalze the database
-app.post("/api/insert", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
-  
-  try {
-    await client.connect();
-
-    const database = client.db('reddit');
-    const collection = database.collection('users');
-
-    // Insert new data into the collection
-    const result = await collection.insertOne(req.body);
-
-    return res.json({ insertedId: result.insertedId });
-  } catch(err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to insert data into the database" });
-  } finally {
-    // Ensures that the client will close when you finish/error
-    await client.close();
-  }
-});
 
 // create fake post database 
 app.post("/api/createfakepost", async (req, res) => {
@@ -311,73 +205,8 @@ app.post("/api/createfakecomment", async (req, res) => {
 });
 
 
-
-// update the user action, ex upvote or down vote for a comment
-app.post("/api/updateUserVote_Comments", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
-
-  try {
-    await client.connect();
-
-    const database = client.db('reddit');
-    const collection = database.collection('users');
-    console.log("updateUserAction")
-    console.log(req.body);
-    const filter = { userid: req.body.userid };
-    const update = {
-      $push: {
-        user_vote_onComments: {
-          action_date: req.body.user_vote_onComments[0].action_date,
-          user_action: req.body.user_vote_onComments[0].user_action,
-          action_comment: req.body.user_vote_onComments[0].action_comment,
-          action_post: req.body.user_vote_onComments[0].action_post
-        }
-      }
-    };
-
-    const result = await collection.updateOne(filter, update);
-
-    return res.json({ updatedCount: result.modifiedCount });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to update user updateUserVote_Comments data in the database" });
-  } finally {
-    await client.close();
-  }
-});
-
-//edits the user profile
+//user 's selection 
 app.post("/api/midpopup_select", async function (req, res) {
-    const client = new MongoClient(uri, { useUnifiedTopology: true });
-  
-    try {
-      await client.connect();
-  
-      const database = client.db('reddit');
-      const collection = database.collection('users');
-      console.log("midpopup_select");
-      console.log(req.body);
-      const filter = { userid: req.body.userid };
-      const update = {
-        $push: {
-            surveypopup_selections: req.body.surveypopup_selections
-        }
-      };
-  
-      const result = await collection.updateOne(filter, update);
-  
-      return res.json({ updatedCount: result.modifiedCount });
-    } catch (err) {
-      console.error(err);
-      return res.status(500).json({ error: "Failed to update user midpopup_select data in the database" });
-    } finally {
-      await client.close();
-    }
-  });
-  
-
-// update the user action, ex upvote or downvote a post 
-app.post("/api/updateUserVote_Posts", async function (req, res) {
   const client = new MongoClient(uri, { useUnifiedTopology: true });
 
   try {
@@ -385,15 +214,44 @@ app.post("/api/updateUserVote_Posts", async function (req, res) {
 
     const database = client.db('reddit');
     const collection = database.collection('users');
-    console.log("updateUserAction")
+    console.log("midpopup_select");
     console.log(req.body);
     const filter = { userid: req.body.userid };
     const update = {
       $push: {
-        user_vote_onPosts: {
-          action_date: req.body.user_vote_onPosts[0].action_date,
-          user_action: req.body.user_vote_onPosts[0].user_action,
-          action_post: req.body.user_vote_onPosts[0].action_post
+          surveypopup_selections: req.body.surveypopup_selections
+      }
+    };
+
+    const result = await collection.updateOne(filter, update);
+
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to update user midpopup_select data in the database" });
+  } finally {
+    await client.close();
+  }
+});
+
+
+
+// update user browser history 
+app.post("/api/updateBrowserHistory", async function (req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+
+    const filter = { userid: req.body.userid };
+    const update = {
+      $push: {
+        browser_history: {
+          browser_date: req.body.browser_history[0].browser_date,
+          browser_url: req.body.browser_history[0].browser_url
         }
       }
     };
@@ -403,14 +261,15 @@ app.post("/api/updateUserVote_Posts", async function (req, res) {
     return res.json({ updatedCount: result.modifiedCount });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to update user updateUserVote_Posts data in the database" });
+    return res.status(500).json({ error: "Failed to update browser history data in the database" });
   } finally {
     await client.close();
   }
 });
 
-// update the user action, reply a comments
-app.post("/api/updateUserReply_Comments", async function (req, res) {
+
+// update user time spend on reddit everyday
+app.post("/api/updateActiveOnReddit", async function (req, res) {
   const client = new MongoClient(uri, { useUnifiedTopology: true });
 
   try {
@@ -418,16 +277,13 @@ app.post("/api/updateUserReply_Comments", async function (req, res) {
 
     const database = client.db('reddit');
     const collection = database.collection('users');
-    console.log("updateUserAction")
-    console.log(req.body);
+
     const filter = { userid: req.body.userid };
     const update = {
       $push: {
-        user_reply_onComments: {
-          action_date: req.body.user_reply_onComments[0].action_date,
-          reply_content: req.body.user_reply_onComments[0].reply_content,
-          reply_comment: req.body.user_reply_onComments[0].reply_comment,
-          reply_post: req.body.user_reply_onComments[0].reply_post
+        active_onReddit: {
+          timeOnSite: req.body.active_onReddit[0].timeOnSite,
+          timeOnSite_date: req.body.active_onReddit[0].timeOnSite_date
         }
       }
     };
@@ -437,45 +293,12 @@ app.post("/api/updateUserReply_Comments", async function (req, res) {
     return res.json({ updatedCount: result.modifiedCount });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to update user updateUserReply_Comments data in the database" });
+    return res.status(500).json({ error: "Failed to update user time spend on reddit everyday in the database" });
   } finally {
     await client.close();
   }
 });
 
-// update the user action, reply a post
-app.post("/api/updateUserReply_Posts", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
-
-  try {
-    await client.connect();
-
-    const database = client.db('reddit');
-    const collection = database.collection('users');
-    console.log("updateUserAction")
-    console.log(req.body);
-    const filter = { userid: req.body.userid };
-    const update = {
-      $push: {
-        user_reply_onPosts: {
-          action_date: req.body.user_reply_onPosts[0].action_date,
-          reply_content: req.body.user_reply_onPosts[0].reply_content,
-          reply_post: req.body.user_reply_onPosts[0].reply_post,
-
-        }
-      }
-    };
-
-    const result = await collection.updateOne(filter, update);
-
-    return res.json({ updatedCount: result.modifiedCount });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to update user updateUserReply_Posts in the database" });
-  } finally {
-    await client.close();
-  }
-});
 
 
 // update user viewed post history 
@@ -536,214 +359,478 @@ app.get("/api/getViewedPosts", async function (req, res) {
   }
 });
 
+/////////  where we define fake comments on fake posts and fake post and others  
 
-// update user browser history 
-app.post("/api/updateBrowserHistory", async function (req, res) {
+
+
+////// USER VOTE USER VOTE USER VOTE USER VOTE USER VOTE 
+// Update user votes for posts
+app.post("/api/updateUserVote_onPosts", async function(req, res) {
   const client = new MongoClient(uri, { useUnifiedTopology: true });
 
   try {
     await client.connect();
-
     const database = client.db('reddit');
     const collection = database.collection('users');
-
     const filter = { userid: req.body.userid };
     const update = {
       $push: {
-        browser_history: {
-          browser_date: req.body.browser_history[0].browser_date,
-          browser_url: req.body.browser_history[0].browser_url
+        'userInteractions.votes.onPosts': {
+          action_date: req.body.user_vote_onPosts[0].action_date,
+          user_action: req.body.user_vote_onPosts[0].user_action,
+          action_post: req.body.user_vote_onPosts[0].action_post
         }
       }
     };
-
     const result = await collection.updateOne(filter, update);
-
     return res.json({ updatedCount: result.modifiedCount });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to update browser history data in the database" });
+    return res.status(500).json({ error: "Failed to update user votes on posts" });
   } finally {
     await client.close();
   }
 });
 
-// update user time spend on reddit everyday
-app.post("/api/updateActiveOnReddit", async function (req, res) {
+// Remove user votes for posts
+app.post("/api/removeUserVote_onPosts", async function(req, res) {
   const client = new MongoClient(uri, { useUnifiedTopology: true });
 
   try {
     await client.connect();
-
     const database = client.db('reddit');
     const collection = database.collection('users');
-
     const filter = { userid: req.body.userid };
-    const update = {
-      $push: {
-        active_onReddit: {
-          timeOnSite: req.body.active_onReddit[0].timeOnSite,
-          timeOnSite_date: req.body.active_onReddit[0].timeOnSite_date
-        }
-      }
-    };
-
-    const result = await collection.updateOne(filter, update);
-
-    return res.json({ updatedCount: result.modifiedCount });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to update user time spend on reddit everyday in the database" });
-  } finally {
-    await client.close();
-  }
-});
-
-
-
-
-app.post("/api/updateUserReplyToFakeComment", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
-
-  try {
-    await client.connect();
-
-    const database = client.db('reddit');
-    const collection = database.collection('users');
-
-    const filter = { userid: req.body.userid };
-    let update = {};
-
-    if (req.body.user_reply_tofakecomment) {
-      update = {
-        $push: {
-          user_reply_tofakecomment: {
-            fake_comment_id: req.body.user_reply_tofakecomment[0].fake_comment_id,
-            userRedditName: req.body.user_reply_tofakecomment[0].userRedditName,
-            userReplyInFake: req.body.user_reply_tofakecomment[0].userReplyInFake,
-            like:req.body.user_reply_tofakecomment[0].like,
-            time:req.body.user_reply_tofakecomment[0].time,
-            profile:req.body.user_reply_tofakecomment[0].profile,
-          }
-        }
-      };
-    }
-
-    const result = await collection.updateOne(filter, update);
-
-    return res.json({ updatedCount: result.modifiedCount });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to update user reply to fake comment in the database" });
-  } finally {
-    await client.close();
-  }
-});
-
-
-// user like fake comment 
-app.post("/api/updateUserVoteFakeContent", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
-
-  try {
-    await client.connect();
-
-    const database = client.db('reddit');
-    const collection = database.collection('users');
-
-    const filter = { userid: req.body.userid };
-    let update = {};
-
-    if (req.body.user_vote_fake) {
-      update = {
-        $push: {
-          user_vote_fake: {
-            user_action:req.body.user_vote_fake[0].user_action,
-            fake_content: req.body.user_vote_fake[0].fake_content,
-          }
-        }
-      };
-    }
-
-    const result = await collection.updateOne(filter, update);
-
-    return res.json({ updatedCount: result.modifiedCount });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to update user like fake content in the database" });
-  } finally {
-    await client.close();
-  }
-});
-
-// delete user like fake comment 
-
-app.post("/api/deleteUserVoteFakeContent", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
-
-  try {
-    await client.connect();
-
-    const database = client.db('reddit');
-    const collection = database.collection('users');
-
-    const filter = { userid: req.body.userid };
-    const  fake_content= req.body.fake_content;
-
     const update = {
       $pull: {
-        user_vote_fake: { fake_content: fake_content }
+        'userInteractions.votes.onPosts': { action_post: req.body.action_post }
+      }
+    };
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to remove user vote on posts" });
+  } finally {
+    await client.close();
+  }
+});
+
+// Update user votes for fake posts
+app.post("/api/updateUserVote_onFakePosts", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    const update = {
+      $push: {
+        'userInteractions.votes.onFakePosts': {
+          action_date: req.body.user_vote_onFakePosts[0].action_date,
+          user_action: req.body.user_vote_onFakePosts[0].user_action,
+          action_fake_post: req.body.user_vote_onFakePosts[0].action_fake_post
+        }
+      }
+    };
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to update user votes on fake posts" });
+  } finally {
+    await client.close();
+  }
+});
+
+// Remove user votes for fake posts
+app.post("/api/removeUserVote_onFakePosts", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    const update = {
+      $pull: {
+        'userInteractions.votes.onFakePosts': { action_fake_post: req.body.action_fake_post }
+      }
+    };
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to remove user vote on fake posts" });
+  } finally {
+    await client.close();
+  }
+});
+
+// Update user votes for comments
+app.post("/api/updateUserVote_onComments", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    const update = {
+      $push: {
+        'userInteractions.votes.onComments': {
+          action_date: req.body.user_vote_onComments[0].action_date,
+          user_action: req.body.user_vote_onComments[0].user_action,
+          action_comment: req.body.user_vote_onComments[0].action_comment,
+          action_post: req.body.user_vote_onComments[0].action_post
+        }
+      }
+    };
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to update user votes on comments" });
+  } finally {
+    await client.close();
+  }
+});
+
+// Remove user votes for comments
+app.post("/api/removeUserVote_onComments", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    
+    const update = {
+      $pull: {
+        'userInteractions.votes.onComments': {
+          action_comment: req.body.action_comment,  // Ensure it matches the comment
+          action_post: req.body.action_post,        // Ensure it matches the post
+          
+        }
       }
     };
     
-
     const result = await collection.updateOne(filter, update);
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({ error: "Vote not found" });
+    }
 
     return res.json({ updatedCount: result.modifiedCount });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to delete user like fake content from the database" });
+    return res.status(500).json({ error: "Failed to remove user vote on comments" });
   } finally {
     await client.close();
   }
 });
 
-// Define the route to retrieve user like fake_comments for a specific userid
-app.get("/api/getuserVotefakecontent", async function (req, res) {
+// Update user votes for fake comments
+app.post("/api/updateUserVote_onFakeComments", async function(req, res) {
   const client = new MongoClient(uri, { useUnifiedTopology: true });
 
   try {
     await client.connect();
-
     const database = client.db('reddit');
     const collection = database.collection('users');
-
-    const userid = req.query.userid; // Get the userid from the query parameter
-
-    // Query for fake_comments data from the collection with the userid filter
-    const query = { userid: userid };
-    const projection = {
-      _id: 0,
-      "user_vote_fake.user_action":1,
-      "user_vote_fake.fake_content": 1,
-     
+    const filter = { userid: req.body.userid };
+    const update = {
+      $push: {
+        'userInteractions.votes.onFakeComments': {
+          action_date: req.body.user_vote_onFakeComments[0].action_date,
+          user_action: req.body.user_vote_onFakeComments[0].user_action,
+          action_fake_comment: req.body.user_vote_onFakeComments[0].action_fake_comment,
+          action_fake_post: req.body.user_vote_onFakeComments[0].action_fake_post      
+        }
+      }
     };
-
-    const result = await collection.find(query).project(projection).toArray();
-
-    return res.json(result);
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to retrieve user like fake content from the database" });
+    return res.status(500).json({ error: "Failed to update user votes on fake comments" });
+  } finally {
+    await client.close();
+  }
+});
+
+// Remove user votes for fake comments
+app.post("/api/removeUserVote_onFakeComments", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    
+    const update = {
+      $pull: {
+        'userInteractions.votes.onFakeComments': {
+          action_fake_comment: req.body.action_fake_comment,  // Ensure it matches the fake comment
+          action_fake_post: req.body.action_fake_post,        // Ensure it matches the fake post
+         
+        }
+      }
+    };
+    
+    const result = await collection.updateOne(filter, update);
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({ error: "Vote not found" });
+    }
+
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to remove user vote on fake comments" });
   } finally {
     await client.close();
   }
 });
 
 
-// Start the server listening for requests
+
+
+//////////// USER REPLIES USER PREPLIES 
+// Update user replies for posts
+app.post("/api/updateUserReply_onPosts", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    const update = {
+      $push: {
+        'userInteractions.replies.onPosts': {
+          action_date: req.body.user_reply_onPosts[0].action_date,
+          reply_content: req.body.user_reply_onPosts[0].reply_content,
+          reply_post: req.body.user_reply_onPosts[0].reply_post,
+        }
+      }
+    };
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to update user replies on posts" });
+  } finally {
+    await client.close();
+  }
+});
+
+app.post("/api/removeUserReply_onPosts", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+
+    const update = {
+      $pull: {
+        'userInteractions.replies.onPosts': {
+          reply_post: req.body.reply_post,      // Ensure it matches the post
+          reply_content: req.body.reply_content, // Ensure it matches the content of the reply
+         
+        }
+      }
+    };
+
+    const result = await collection.updateOne(filter, update);
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({ error: "Reply not found" });
+    }
+
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to remove user reply on posts" });
+  } finally {
+    await client.close();
+  }
+});
+
+// Update user replies for fake posts
+app.post("/api/updateUserReply_onFakePosts", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    const update = {
+      $push: {
+        'userInteractions.replies.onFakePosts': {
+          action_date: req.body.user_reply_onFakePosts[0].action_date,
+          reply_content: req.body.user_reply_onFakePosts[0].reply_content,
+          reply_fake_post: req.body.user_reply_onFakePosts[0].reply_fake_post,
+        }
+      }
+    };
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to update user replies on fake posts" });
+  } finally {
+    await client.close();
+  }
+});
+
+// Remove user replies for fake posts
+app.post("/api/removeUserReply_onFakePosts", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    const update = {
+      $pull: {
+        'userInteractions.replies.onFakePosts': { 
+        reply_content: req.body.reply_content,
+        reply_fake_post: req.body.reply_fake_post }
+      }
+    };
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to remove user reply on fake posts" });
+  } finally {
+    await client.close();
+  }
+});
+
+// Update user replies for comments
+app.post("/api/updateUserReply_onComments", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    const update = {
+      $push: {
+        'userInteractions.replies.onComments': {
+          action_date: req.body.user_reply_onComments[0].action_date,
+          reply_to: req.body.user_reply_onComments[0].reply_to,  // The comment being replied to
+          reply_content: req.body.user_reply_onComments[0].reply_content,  // The user's reply
+          reply_post: req.body.user_reply_onComments[0].reply_post
+        }
+      }
+    };
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to update user replies on comments" });
+  } finally {
+    await client.close();
+  }
+});
+
+// Remove user replies for comments
+app.post("/api/removeUserReply_onComments", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    const update = {
+      $pull: {
+        'userInteractions.replies.onComments': { 
+          reply_content: req.body.reply_content,  // Ensure it matches the comment
+          reply_to: req.body.reply_to, 
+          reply_post:  req.body.reply_post        // Ensure it matches the comment the user replied t
+           }
+      }
+    };
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to remove user reply on comments" });
+  } finally {
+    await client.close();
+  }
+});
+
+// Update user replies for fake comments
+app.post("/api/updateUserReply_onFakeComments", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    const update = {
+      $push: {
+        'userInteractions.replies.onFakeComments': {
+          action_date: req.body.user_reply_onFakeComments[0].action_date,
+          reply_to: req.body.user_reply_onFakeComments[0].reply_to,  // The fake comment being replied to
+          reply_content: req.body.user_reply_onFakeComments[0].reply_content,  // The user's reply to the fake comment
+          reply_fake_post: req.body.user_reply_onFakeComments[0].reply_fake_post
+        }
+      }
+    };
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to update user replies on fake comments" });
+  } finally {
+    await client.close();
+  }
+});
+
+// Remove user replies for fake comments
+app.post("/api/removeUserReply_onFakeComments", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+    const filter = { userid: req.body.userid };
+    const update = {
+      $pull: {
+        'userInteractions.replies.onFakeComments': {
+          reply_to: req.body.reply_to,
+          reply_fake_post: req.body.reply_fake_post, 
+          reply_content: req.body.reply_content
+         }
+      }
+    };
+    const result = await collection.updateOne(filter, update);
+    return res.json({ updatedCount: result.modifiedCount });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to remove user reply on fake comments" });
+  } finally {
+    await client.close();
+  }
+});
+
+
+
 app.listen(process.env.PORT || 3000, 
 	() => console.log("Server is running..."));
-
-// try to access reddit and send to token  
-
