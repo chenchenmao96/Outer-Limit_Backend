@@ -831,6 +831,106 @@ app.post("/api/removeUserReply_onFakeComments", async function(req, res) {
 });
 
 
+////// read user's action on fake post includes fake comments only ///////////////
+app.get("/api/getUserVotes_onFakePosts", async function (req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+
+    // Querying for user votes on fake posts
+    const filter = { userid: req.query.userid };
+    const user = await collection.findOne(filter, { projection: { 'userInteractions.votes.onFakePosts': 1, _id: 0 } });
+
+    if (user) {
+      return res.json(user);
+    } else {
+      return res.status(404).json({ error: "User not found" });
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to retrieve user votes on fake posts" });
+  } finally {
+    await client.close();
+  }
+});
+
+app.get("/api/getUserVotes_onFakeComments", async function (req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+
+    // Querying for user votes on fake comments
+    const filter = { userid: req.query.userid };
+    const user = await collection.findOne(filter, { projection: { 'userInteractions.votes.onFakeComments': 1, _id: 0 } });
+
+    if (user) {
+      return res.json(user);
+    } else {
+      return res.status(404).json({ error: "User not found" });
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to retrieve user votes on fake comments" });
+  } finally {
+    await client.close();
+  }
+});
+
+app.get("/api/getUserComments_onFakePosts", async function (req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+
+    // Querying for user comments on fake posts
+    const filter = { userid: req.query.userid };
+    const user = await collection.findOne(filter, { projection: { 'userInteractions.replies.onFakePosts': 1, _id: 0 } });
+
+    if (user) {
+      return res.json(user);
+    } else {
+      return res.status(404).json({ error: "User not found" });
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to retrieve user comments on fake posts" });
+  } finally {
+    await client.close();
+  }
+});
+
+app.get("/api/getUserComments_onFakeComments", async function (req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+
+    // Querying for user comments on fake comments
+    const filter = { userid: req.query.userid };
+    const user = await collection.findOne(filter, { projection: { 'userInteractions.replies.onFakeComments': 1, _id: 0 } });
+
+    if (user) {
+      return res.json(user);
+    } else {
+      return res.status(404).json({ error: "User not found" });
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to retrieve user comments on fake comments" });
+  } finally {
+    await client.close();
+  }
+});
 
 app.listen(process.env.PORT || 3000, 
 	() => console.log("Server is running..."));
