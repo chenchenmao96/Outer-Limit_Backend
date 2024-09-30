@@ -725,6 +725,46 @@ app.post("/api/updateUserReply_onFakePosts", async function(req, res) {
   }
 });
 
+app.get("/api/getUserReplyToFakePosts", async function(req, res) {
+  const client = new MongoClient(uri, { useUnifiedTopology: true });
+
+  try {
+    await client.connect();
+    const database = client.db('reddit');
+    const collection = database.collection('users');
+
+    // Extract the userid and fakePostId from the query parameters
+    const filter = { userid: req.query.userid };
+    const fakePostId = req.query.fakePostId;
+
+    // Find the user and project only the relevant fields
+    const user = await collection.findOne(filter, { 
+      projection: { 
+        'userInteractions.replies.onFakePosts': 1 
+      }
+    });
+
+    if (user && user.userInteractions && user.userInteractions.replies.onFakePosts) {
+      // Filter replies to only include those that match the provided fakePostId
+      const replies = user.userInteractions.replies.onFakePosts.filter(reply => reply.reply_fake_post === fakePostId);
+
+      // Check if there are any replies
+      if (replies.length > 0) {
+        return res.json({ replies });
+      } else {
+        return res.status(404).json({ error: "No replies found for this fake post" });
+      }
+    } else {
+      return res.status(404).json({ error: "User or replies not found" });
+    }
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Failed to retrieve user replies to fake posts" });
+  } finally {
+    await client.close();
+  }
+});
+
 // Remove user replies for fake posts
 app.post("/api/removeUserReply_onFakePosts", async function(req, res) {
   const client = new MongoClient(uri, { useUnifiedTopology: true });
