@@ -110,9 +110,7 @@ app.get("/api/getfakepost", async (req, res) => {
         return res.status(404).json({ error: "Fake post not found" });
       }
     }
-    // Find the fake post by its fakepost_url
-    const fakePost = await collection.findOne({ fakepost_url: fakepost_url });
-
+  
    
 
     // Return the fake post including the comments inside it
