@@ -96,19 +96,27 @@ app.get("/api/getfakepost", async (req, res) => {
     // Extract the fakepost_url from query parameters
     const fakepost_url = req.query.fakepost_url;
 
-    if (!fakepost_url) {
-      return res.status(400).json({ error: "fakepost_url is required" });
-    }
+ 
+    let fakePosts;
 
+    if (!fakepost_url) {
+      // If fakepost_url is not provided, return all fake posts
+      fakePosts = await collection.find({}).toArray();
+    } else {
+      // Find the fake post by its fakepost_url
+      fakePosts = await collection.findOne({ fakepost_url: fakepost_url });
+      
+      if (!fakePosts) {
+        return res.status(404).json({ error: "Fake post not found" });
+      }
+    }
     // Find the fake post by its fakepost_url
     const fakePost = await collection.findOne({ fakepost_url: fakepost_url });
 
-    if (!fakePost) {
-      return res.status(404).json({ error: "Fake post not found" });
-    }
+   
 
     // Return the fake post including the comments inside it
-    return res.json(fakePost);
+    return res.json(fakePosts);
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "Failed to retrieve the fake post" });
