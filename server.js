@@ -141,11 +141,9 @@ app.get("/api/fake_comments", async function (req, res) {
     const query = {};
     const projection = {
       "fake_comment_id": 1,
+      "fakepost_id":1,
       "user_name": 1,
       "content": 1,
-      "where_to_insert": 1,
-      "ordinal_position": 1,
-      "post_url": 1,
       "like":1,
       "time":1
     };
