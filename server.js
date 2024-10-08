@@ -667,38 +667,30 @@ app.post("/api/updateUserReply_onPosts", async function(req, res) {
   }
 });
 
+// Remove user replies for real posts
 app.post("/api/removeUserReply_onPosts", async function(req, res) {
   const client = new MongoClient(uri, { useUnifiedTopology: true });
 
-  try {
-    await client.connect();
-    const database = client.db('reddit');
-    const collection = database.collection('users');
-    const filter = { userid: req.body.userid };
-
-    const update = {
-      $pull: {
-        'userInteractions.replies.onPosts': {
-          reply_post: req.body.reply_post,      // Ensure it matches the post
-          reply_content: req.body.reply_content, // Ensure it matches the content of the reply
-         
+    try {
+      await client.connect();
+      const database = client.db('reddit');
+      const collection = database.collection('users');
+      const filter = { userid: req.body.userid };
+      const update = {
+        $pull: {
+          'userInteractions.replies.onPosts': { 
+          reply_content: req.body.reply_content,
+          reply_post: req.body.reply_post }
         }
-      }
-    };
-
-    const result = await collection.updateOne(filter, update);
-
-    if (result.modifiedCount === 0) {
-      return res.status(404).json({ error: "Reply not found" });
+      };
+      const result = await collection.updateOne(filter, update);
+      return res.json({ updatedCount: result.modifiedCount });
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({ error: "Failed to remove user reply on real posts" });
+    } finally {
+      await client.close();
     }
-
-    return res.json({ updatedCount: result.modifiedCount });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to remove user reply on posts" });
-  } finally {
-    await client.close();
-  }
 });
 
 // Update user replies for fake posts
