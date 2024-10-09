@@ -679,8 +679,8 @@ app.post("/api/removeUserReply_onPosts", async function(req, res) {
       const update = {
         $pull: {
           'userInteractions.replies.onPosts': { 
-         // reply_content: req.body.reply_content,
-         reply_content: { $regex: replyContentRegex },  // Use regex to match reply_content ignoring trailing spaces
+         reply_content: req.body.reply_content.trim(),
+         //reply_content: { $regex: replyContentRegex },  // Use regex to match reply_content ignoring trailing spaces
          reply_post: req.body.reply_post }
         }
       };
@@ -774,7 +774,7 @@ app.post("/api/removeUserReply_onFakePosts", async function(req, res) {
     const update = {
       $pull: {
         'userInteractions.replies.onFakePosts': { 
-          reply_content: { $regex: replyContentRegex },  // Use regex to match reply_content ignoring trailing spaces
+        reply_content: req.body.reply_content.trim(),  // Use regex to match reply_content ignoring trailing spaces
         reply_fake_post: req.body.reply_fake_post }
       }
     };
@@ -829,8 +829,8 @@ app.post("/api/removeUserReply_onComments", async function(req, res) {
     const update = {
       $pull: {
         'userInteractions.replies.onComments': { 
-          //reply_content: req.body.reply_content,  // Ensure it matches the comment
-          reply_content: { $regex: replyContentRegex },  // Use regex to match reply_content ignoring trailing spacesr
+          reply_content: req.body.reply_content.trim(),  // Ensure it matches the comment
+          //reply_content: { $regex: replyContentRegex },  // Use regex to match reply_content ignoring trailing spacesr
           reply_post:  req.body.reply_post        // Ensure it matches the comment the user replied t
            }
       }
@@ -888,8 +888,8 @@ app.post("/api/removeUserReply_onFakeComments", async function(req, res) {
         'userInteractions.replies.onFakeComments': {
           reply_to: req.body.reply_to,
           reply_fake_post: req.body.reply_fake_post, 
-         // reply_content: req.body.reply_content
-          reply_content: { $regex: replyContentRegex },  // Use regex to match reply_content ignoring trailing spaces
+          reply_content: req.body.reply_content.trim(),
+          //reply_content: { $regex: replyContentRegex },  // Use regex to match reply_content ignoring trailing spaces
           //reply_content: req.body.user_reply_onFakeComments[0].reply_content, 
          }
       }
