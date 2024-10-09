@@ -652,7 +652,7 @@ app.post("/api/updateUserReply_onPosts", async function(req, res) {
       $push: {
         'userInteractions.replies.onPosts': {
           action_date: req.body.user_reply_onPosts[0].action_date,
-          reply_content: req.body.user_reply_onPosts[0].reply_content,
+          reply_content: req.body.user_reply_onPosts[0].reply_content.trim(),
           reply_post: req.body.user_reply_onPosts[0].reply_post,
         }
       }
@@ -706,7 +706,7 @@ app.post("/api/updateUserReply_onFakePosts", async function(req, res) {
       $push: {
         'userInteractions.replies.onFakePosts': {
           action_date: req.body.user_reply_onFakePosts[0].action_date,
-          reply_content: req.body.user_reply_onFakePosts[0].reply_content,
+          reply_content: req.body.user_reply_onFakePosts[0].reply_content.trim(),
           reply_fake_post: req.body.user_reply_onFakePosts[0].reply_fake_post,
         }
       }
@@ -801,7 +801,7 @@ app.post("/api/updateUserReply_onComments", async function(req, res) {
         'userInteractions.replies.onComments': {
           action_date: req.body.user_reply_onComments[0].action_date,
           reply_to: req.body.user_reply_onComments[0].reply_to,  // The comment being replied to
-          reply_content: req.body.user_reply_onComments[0].reply_content,  // The user's reply
+          reply_content: req.body.user_reply_onComments[0].reply_content.trim(),  // The user's reply
           reply_post: req.body.user_reply_onComments[0].reply_post
         }
       }
@@ -858,7 +858,7 @@ app.post("/api/updateUserReply_onFakeComments", async function(req, res) {
         'userInteractions.replies.onFakeComments': {
           action_date: req.body.user_reply_onFakeComments[0].action_date,
           reply_to: req.body.user_reply_onFakeComments[0].reply_to,  // The fake comment being replied to
-          reply_content: req.body.user_reply_onFakeComments[0].reply_content,  // The user's reply to the fake comment
+          reply_content: req.body.user_reply_onFakeComments[0].reply_content.trim(),  // The user's reply to the fake comment
           reply_fake_post: req.body.user_reply_onFakeComments[0].reply_fake_post
         }
       }
