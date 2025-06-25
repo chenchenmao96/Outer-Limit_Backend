@@ -11,7 +11,7 @@ app.listen(3001, () => {
 
 const { MongoClient } = require("mongodb");
 
-const uri = "mongodb+srv://chenchen:19951210@cluster0.7thgave.mongodb.net/?retryWrites=true&w=majority";
+const uri = "mongodb+srv://chenchen:19951210m@cluster0.zcilmph.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 // Use the express.json middleware to parse JSON bodies
 app.use(function(req, res, next) {
