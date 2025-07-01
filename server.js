@@ -86,43 +86,40 @@ app.post("/api/insert", async function (req, res) {
 
 app.get("/api/getfakepost", async (req, res) => {
   const client = new MongoClient(uri, { useUnifiedTopology: true });
-
   try {
     await client.connect();
 
-    const database = client.db('reddit');
-    const collection = database.collection('fakepost');
+    const db = client.db("reddit");
+    const col = db.collection("fakepost");
 
-    // Extract the fakepost_url from query parameters
-    const fakepost_url = req.query.fakepost_url;
+    // grab both params
+    const { fakepost_url, group } = req.query;
 
- 
-    let fakePosts;
+    // build dynamic filter
+    const filter = {};
+    if (fakepost_url) filter.fakepost_url = fakepost_url;
+    if (group)         filter.group        = group;
 
-    if (!fakepost_url) {
-      // If fakepost_url is not provided, return all fake posts
-      fakePosts = await collection.find({}).toArray();
+    let posts;
+    if (Object.keys(filter).length === 0) {
+      // no filters? return everything
+      posts = await col.find({}).toArray();
     } else {
-      // Find the fake post by its fakepost_url
-      fakePosts = await collection.findOne({ fakepost_url: fakepost_url });
-      
-      if (!fakePosts) {
-        return res.status(404).json({ error: "Fake post not found" });
+      // one or both filters? return only matching docs
+      posts = await col.find(filter).toArray();
+      if (posts.length === 0) {
+        return res.status(404).json({ error: "No matching fake posts" });
       }
     }
-  
-   
 
-    // Return the fake post including the comments inside it
-    return res.json(fakePosts);
+    return res.json(posts);
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to retrieve the fake post" });
+    return res.status(500).json({ error: "Failed to retrieve fake posts" });
   } finally {
     await client.close();
   }
 });
-
 
 
 
