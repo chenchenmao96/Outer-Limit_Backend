@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 // MongoDB URI
-const uri = "mongodb+srv://chenchen:19951210@cluster0.7thgave.mongodb.net/?retryWrites=true&w=majority";
+const uri = "mongodb+srv://chm321:19951210m@cluster0.zcilmph.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 // Output file path
 const outputPath = path.join(__dirname, 'exportedUsers.json');
@@ -21,9 +21,7 @@ async function exportUsers() {
         const users = await collection.find({}, { 
             projection: {
                 userid: 1, 
-                userInteractions: 1, 
-                browser_history: 1, 
-                viewed_posts: 1 
+                usergroup: 1
             } 
         }).toArray();
 
