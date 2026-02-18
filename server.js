@@ -62,22 +62,54 @@ app.get("/api/data", async function (req, res) {
 // Define the second route to initalze the database
 app.post("/api/insert", async function (req, res) {
   const client = new MongoClient(uri, { useUnifiedTopology: true });
-  
+
   try {
     await client.connect();
 
-    const database = client.db('reddit');
-    const collection = database.collection('users');
+    const db = client.db("reddit");
+    const users = db.collection("users");
 
-    // Insert new data into the collection
-    const result = await collection.insertOne(req.body);
+    const { userid, usergroup } = req.body || {};
+    if (!userid) {
+      return res.status(400).json({ error: "userid is required" });
+    }
 
-    return res.json({ insertedId: result.insertedId });
-  } catch(err) {
+    const now = new Date();
+
+    // 核心点：
+    // 1) $setOnInsert: 只在“第一次创建用户”时写入 usergroup
+    // 2) $set: 每次都更新 lastSeenAt（但不动 usergroup）
+    // 3) findOneAndUpdate: 直接把“数据库里的那条用户”拿回来用于返回 usergroup
+    const result = await users.findOneAndUpdate(
+      { userid },
+      {
+        $setOnInsert: {
+          ...req.body,              // 你原本就是把整个 body 存进去
+          usergroup: usergroup,     // 确保首次写入 usergroup
+          createdAt: now,
+        },
+        $set: {
+          lastSeenAt: now,
+        },
+      },
+      {
+        upsert: true,
+        returnDocument: "after", // 返回更新/插入后的文档
+      }
+    );
+
+    const doc = result.value;
+
+    // doc 一定有（upsert=true），除非发生异常
+    return res.status(200).json({
+      userid: doc.userid,
+      usergroup: doc.usergroup, // ✅ 不管是否已存在，都返回数据库里的 group
+      created: !!result.lastErrorObject?.upserted, // true=刚插入；false=原来就存在
+    });
+  } catch (err) {
     console.error(err);
-    return res.status(500).json({ error: "Failed to insert data into the database" });
+    return res.status(500).json({ error: "Failed to insert/upsert user" });
   } finally {
-    // Ensures that the client will close when you finish/error
     await client.close();
   }
 });
