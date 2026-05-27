@@ -1,17 +1,78 @@
 const express = require('express');
 const path = require('path');
+require('dotenv').config();
 const app = express();
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.listen(3001, () => {
-  console.log('Server is running on port 3001');
-});
-
-
 const { MongoClient } = require("mongodb");
 
-const uri = "mongodb+srv://chm321:19951210m@cluster0.4cibxmv.mongodb.net/?appName=Cluster0";
+const uri = process.env.MONGODB_URI;
+const adminExportToken = process.env.ADMIN_EXPORT_TOKEN;
+
+function createMongoClient() {
+  if (!uri) {
+    throw new Error("MONGODB_URI environment variable is required");
+  }
+
+  return new MongoClient(uri, { useUnifiedTopology: true });
+}
+
+async function ensureIndexes() {
+  if (!uri) {
+    console.warn("MONGODB_URI is not set. Database indexes were not created.");
+    return;
+  }
+
+  const client = createMongoClient();
+  try {
+    await client.connect();
+    const db = client.db("reddit");
+    await db.collection("users").createIndex({ userid: 1 }, { unique: true });
+    await db.collection("fakepost").createIndex({ fakepost_url: 1, group: 1 });
+    await db.collection("fakecomment").createIndex({ fakepost_id: 1 });
+    console.log("Database indexes are ready.");
+  } catch (err) {
+    console.error("Failed to create database indexes:", err);
+  } finally {
+    await client.close();
+  }
+}
+
+ensureIndexes();
+
+function canExportAllData(req) {
+  return Boolean(adminExportToken && req.get("x-admin-token") === adminExportToken);
+}
+
+function emptyUserInteractionsResponse(section, item) {
+  return {
+    userInteractions: {
+      [section]: {
+        [item]: []
+      }
+    }
+  };
+}
+
+async function replaceUserArrayEntry(collection, filter, arrayPath, match, value) {
+  await collection.updateOne(filter, { $pull: { [arrayPath]: match } });
+  return collection.updateOne(filter, { $push: { [arrayPath]: value } });
+}
+
+function compactObject(value) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== "")
+  );
+}
+
+function replyPullFilter(body, fallback) {
+  if (body.reply_id) {
+    return { reply_id: body.reply_id };
+  }
+
+  return fallback;
+}
 
 // Use the express.json middleware to parse JSON bodies
 app.use(function(req, res, next) {
@@ -29,12 +90,16 @@ app.use(express.static(publicPath));
 
 //route for homepage
 app.get("/", (req,res)=>{
-  res.render("index", {});
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 // Define the first route to retrieve data
 app.get("/api/data", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  if (!canExportAllData(req)) {
+    return res.status(403).json({ error: "Admin export token is required" });
+  }
+
+  const client = createMongoClient();
   
   try {
     await client.connect();
@@ -61,7 +126,7 @@ app.get("/api/data", async function (req, res) {
 
 // Define the second route to initalze the database
 app.post("/api/insert", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -94,17 +159,24 @@ app.post("/api/insert", async function (req, res) {
       },
       {
         upsert: true,
-        returnDocument: "after", // 返回更新/插入后的文档
+        returnOriginal: false, // mongodb@3.x uses returnOriginal, not returnDocument
       }
     );
 
-    const doc = result.value;
+    let doc = result.value;
+    if (!doc) {
+      doc = await users.findOne({ userid });
+    }
+
+    if (!doc) {
+      return res.status(500).json({ error: "User was not returned after insert/upsert" });
+    }
 
     // doc 一定有（upsert=true），除非发生异常
     return res.status(200).json({
       userid: doc.userid,
       usergroup: doc.usergroup, // ✅ 不管是否已存在，都返回数据库里的 group
-      created: !!result.lastErrorObject?.upserted, // true=刚插入；false=原来就存在
+      created: !!(result.lastErrorObject && result.lastErrorObject.upserted), // true=刚插入；false=原来就存在
     });
   } catch (err) {
     console.error(err);
@@ -117,7 +189,7 @@ app.post("/api/insert", async function (req, res) {
 /////////  where we define fake comments on fake posts and fake post 
 
 app.get("/api/getfakepost", async (req, res) => {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
   try {
     await client.connect();
 
@@ -158,7 +230,7 @@ app.get("/api/getfakepost", async (req, res) => {
 
 // Define the route to retrieve all fake comments
 app.get("/api/fake_comments", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -191,7 +263,7 @@ app.get("/api/fake_comments", async function (req, res) {
 
 // create fake post database 
 app.post("/api/createfakepost", async (req, res) => {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -219,7 +291,7 @@ app.post("/api/createfakepost", async (req, res) => {
 });
 /// insert fake comments inside the fake post 
 app.post("/api/addfakecomment/:postId", async (req, res) => {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -251,7 +323,7 @@ app.post("/api/addfakecomment/:postId", async (req, res) => {
 
 // create fakecomment database 
 app.post("/api/createfakecomment", async (req, res) => {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -275,7 +347,7 @@ app.post("/api/createfakecomment", async (req, res) => {
 
 //user 's selection 
 app.post("/api/midpopup_select", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -306,7 +378,7 @@ app.post("/api/midpopup_select", async function (req, res) {
 
 // update user browser history 
 app.post("/api/updateBrowserHistory", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -338,7 +410,7 @@ app.post("/api/updateBrowserHistory", async function (req, res) {
 
 // update user time spend on reddit everyday
 app.post("/api/updateActiveOnReddit", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -371,7 +443,7 @@ app.post("/api/updateActiveOnReddit", async function (req, res) {
 
 // update user viewed post history 
 app.post("/api/updateViwedPost", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -401,7 +473,7 @@ app.post("/api/updateViwedPost", async function (req, res) {
 });
 
 app.get("/api/getViewedPosts", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -417,7 +489,7 @@ app.get("/api/getViewedPosts", async function (req, res) {
     if (user) {
       return res.json(user);
     } else {
-      return res.status(404).json({ error: "User not found" });
+      return res.json({ viewed_posts: [] });
     }
   } catch (err) {
     console.error(err);
@@ -434,23 +506,27 @@ app.get("/api/getViewedPosts", async function (req, res) {
 ////// USER VOTE USER VOTE USER VOTE USER VOTE USER VOTE 
 // Update user votes for posts
 app.post("/api/updateUserVote_onPosts", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
     const database = client.db('reddit');
     const collection = database.collection('users');
     const filter = { userid: req.body.userid };
-    const update = {
-      $push: {
-        'userInteractions.votes.onPosts': {
-          action_date: req.body.user_vote_onPosts[0].action_date,
-          user_action: req.body.user_vote_onPosts[0].user_action,
-          action_post: req.body.user_vote_onPosts[0].action_post
-        }
-      }
-    };
-    const result = await collection.updateOne(filter, update);
+    const vote = req.body.user_vote_onPosts[0];
+    const result = await replaceUserArrayEntry(
+      collection,
+      filter,
+      'userInteractions.votes.onPosts',
+      { action_post: vote.action_post },
+      compactObject({
+        action_date: vote.action_date,
+        user_action: vote.user_action,
+        action_post: vote.action_post,
+        target_post_title: vote.target_post_title,
+        target_post_context: vote.target_post_context
+      })
+    );
     return res.json({ updatedCount: result.modifiedCount });
   } catch (err) {
     console.error(err);
@@ -462,7 +538,7 @@ app.post("/api/updateUserVote_onPosts", async function(req, res) {
 
 // Remove user votes for posts
 app.post("/api/removeUserVote_onPosts", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -486,23 +562,27 @@ app.post("/api/removeUserVote_onPosts", async function(req, res) {
 
 // Update user votes for fake posts
 app.post("/api/updateUserVote_onFakePosts", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
     const database = client.db('reddit');
     const collection = database.collection('users');
     const filter = { userid: req.body.userid };
-    const update = {
-      $push: {
-        'userInteractions.votes.onFakePosts': {
-          action_date: req.body.user_vote_onFakePosts[0].action_date,
-          user_action: req.body.user_vote_onFakePosts[0].user_action,
-          action_fake_post: req.body.user_vote_onFakePosts[0].action_fake_post
-        }
-      }
-    };
-    const result = await collection.updateOne(filter, update);
+    const vote = req.body.user_vote_onFakePosts[0];
+    const result = await replaceUserArrayEntry(
+      collection,
+      filter,
+      'userInteractions.votes.onFakePosts',
+      { action_fake_post: vote.action_fake_post },
+      compactObject({
+        action_date: vote.action_date,
+        user_action: vote.user_action,
+        action_fake_post: vote.action_fake_post,
+        target_post_title: vote.target_post_title,
+        target_post_context: vote.target_post_context
+      })
+    );
     return res.json({ updatedCount: result.modifiedCount });
   } catch (err) {
     console.error(err);
@@ -514,7 +594,7 @@ app.post("/api/updateUserVote_onFakePosts", async function(req, res) {
 
 // Remove user votes for fake posts
 app.post("/api/removeUserVote_onFakePosts", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -538,24 +618,31 @@ app.post("/api/removeUserVote_onFakePosts", async function(req, res) {
 
 // Update user votes for comments
 app.post("/api/updateUserVote_onComments", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
     const database = client.db('reddit');
     const collection = database.collection('users');
     const filter = { userid: req.body.userid };
-    const update = {
-      $push: {
-        'userInteractions.votes.onComments': {
-          action_date: req.body.user_vote_onComments[0].action_date,
-          user_action: req.body.user_vote_onComments[0].user_action,
-          action_comment: req.body.user_vote_onComments[0].action_comment,
-          action_post: req.body.user_vote_onComments[0].action_post
-        }
-      }
-    };
-    const result = await collection.updateOne(filter, update);
+    const vote = req.body.user_vote_onComments[0];
+    const result = await replaceUserArrayEntry(
+      collection,
+      filter,
+      'userInteractions.votes.onComments',
+      {
+        action_comment: vote.action_comment,
+        action_post: vote.action_post
+      },
+      compactObject({
+        action_date: vote.action_date,
+        user_action: vote.user_action,
+        action_comment: vote.action_comment,
+        action_post: vote.action_post,
+        target_comment_context: vote.target_comment_context,
+        target_comment_author: vote.target_comment_author
+      })
+    );
     return res.json({ updatedCount: result.modifiedCount });
   } catch (err) {
     console.error(err);
@@ -567,7 +654,7 @@ app.post("/api/updateUserVote_onComments", async function(req, res) {
 
 // Remove user votes for comments
 app.post("/api/removeUserVote_onComments", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -588,7 +675,7 @@ app.post("/api/removeUserVote_onComments", async function(req, res) {
     const result = await collection.updateOne(filter, update);
 
     if (result.modifiedCount === 0) {
-      return res.status(404).json({ error: "Vote not found" });
+      return res.json({ updatedCount: 0, removed: false });
     }
 
     return res.json({ updatedCount: result.modifiedCount });
@@ -602,24 +689,31 @@ app.post("/api/removeUserVote_onComments", async function(req, res) {
 
 // Update user votes for fake comments
 app.post("/api/updateUserVote_onFakeComments", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
     const database = client.db('reddit');
     const collection = database.collection('users');
     const filter = { userid: req.body.userid };
-    const update = {
-      $push: {
-        'userInteractions.votes.onFakeComments': {
-          action_date: req.body.user_vote_onFakeComments[0].action_date,
-          user_action: req.body.user_vote_onFakeComments[0].user_action,
-          action_fake_comment: req.body.user_vote_onFakeComments[0].action_fake_comment,
-          action_fake_post: req.body.user_vote_onFakeComments[0].action_fake_post      
-        }
-      }
-    };
-    const result = await collection.updateOne(filter, update);
+    const vote = req.body.user_vote_onFakeComments[0];
+    const result = await replaceUserArrayEntry(
+      collection,
+      filter,
+      'userInteractions.votes.onFakeComments',
+      {
+        action_fake_comment: vote.action_fake_comment,
+        action_fake_post: vote.action_fake_post
+      },
+      compactObject({
+        action_date: vote.action_date,
+        user_action: vote.user_action,
+        action_fake_comment: vote.action_fake_comment,
+        action_fake_post: vote.action_fake_post,
+        target_comment_context: vote.target_comment_context,
+        target_comment_author: vote.target_comment_author
+      })
+    );
     return res.json({ updatedCount: result.modifiedCount });
   } catch (err) {
     console.error(err);
@@ -631,7 +725,7 @@ app.post("/api/updateUserVote_onFakeComments", async function(req, res) {
 
 // Remove user votes for fake comments
 app.post("/api/removeUserVote_onFakeComments", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -652,7 +746,7 @@ app.post("/api/removeUserVote_onFakeComments", async function(req, res) {
     const result = await collection.updateOne(filter, update);
 
     if (result.modifiedCount === 0) {
-      return res.status(404).json({ error: "Vote not found" });
+      return res.json({ updatedCount: 0, removed: false });
     }
 
     return res.json({ updatedCount: result.modifiedCount });
@@ -670,20 +764,24 @@ app.post("/api/removeUserVote_onFakeComments", async function(req, res) {
 //////////// USER REPLIES USER PREPLIES 
 // Update user replies for posts
 app.post("/api/updateUserReply_onPosts", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
     const database = client.db('reddit');
     const collection = database.collection('users');
     const filter = { userid: req.body.userid };
+    const reply = req.body.user_reply_onPosts[0];
     const update = {
       $push: {
-        'userInteractions.replies.onPosts': {
-          action_date: req.body.user_reply_onPosts[0].action_date,
-          reply_content: req.body.user_reply_onPosts[0].reply_content.trimEnd(),
-          reply_post: req.body.user_reply_onPosts[0].reply_post,
-        }
+        'userInteractions.replies.onPosts': compactObject({
+          reply_id: reply.reply_id,
+          action_date: reply.action_date,
+          reply_content: reply.reply_content.trimEnd(),
+          reply_post: reply.reply_post,
+          target_post_title: reply.target_post_title,
+          target_post_context: reply.target_post_context
+        })
       }
     };
     const result = await collection.updateOne(filter, update);
@@ -698,7 +796,7 @@ app.post("/api/updateUserReply_onPosts", async function(req, res) {
 
 // Remove user replies for real posts
 app.post("/api/removeUserReply_onPosts", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
     try {
       await client.connect();
@@ -707,9 +805,10 @@ app.post("/api/removeUserReply_onPosts", async function(req, res) {
       const filter = { userid: req.body.userid };
       const update = {
         $pull: {
-          'userInteractions.replies.onPosts': { 
-          reply_content: req.body.reply_content,
-          reply_post: req.body.reply_post }
+          'userInteractions.replies.onPosts': replyPullFilter(req.body, {
+            reply_content: req.body.reply_content,
+            reply_post: req.body.reply_post
+          })
         }
       };
       const result = await collection.updateOne(filter, update);
@@ -724,20 +823,24 @@ app.post("/api/removeUserReply_onPosts", async function(req, res) {
 
 // Update user replies for fake posts
 app.post("/api/updateUserReply_onFakePosts", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
     const database = client.db('reddit');
     const collection = database.collection('users');
     const filter = { userid: req.body.userid };
+    const reply = req.body.user_reply_onFakePosts[0];
     const update = {
       $push: {
-        'userInteractions.replies.onFakePosts': {
-          action_date: req.body.user_reply_onFakePosts[0].action_date,
-          reply_content: req.body.user_reply_onFakePosts[0].reply_content.trimEnd(),
-          reply_fake_post: req.body.user_reply_onFakePosts[0].reply_fake_post,
-        }
+        'userInteractions.replies.onFakePosts': compactObject({
+          reply_id: reply.reply_id,
+          action_date: reply.action_date,
+          reply_content: reply.reply_content.trimEnd(),
+          reply_fake_post: reply.reply_fake_post,
+          target_post_title: reply.target_post_title,
+          target_post_context: reply.target_post_context
+        })
       }
     };
     const result = await collection.updateOne(filter, update);
@@ -751,7 +854,7 @@ app.post("/api/updateUserReply_onFakePosts", async function(req, res) {
 });
 
 app.get("/api/getUserReplyToFakePosts", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -777,10 +880,10 @@ app.get("/api/getUserReplyToFakePosts", async function(req, res) {
       if (replies.length > 0) {
         return res.json({ replies });
       } else {
-        return res.status(404).json({ error: "No replies found for this fake post" });
+        return res.json({ replies: [] });
       }
     } else {
-      return res.status(404).json({ error: "User or replies not found" });
+      return res.json({ replies: [] });
     }
   } catch (err) {
     console.error(err);
@@ -792,7 +895,7 @@ app.get("/api/getUserReplyToFakePosts", async function(req, res) {
 
 // Remove user replies for fake posts
 app.post("/api/removeUserReply_onFakePosts", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -801,9 +904,10 @@ app.post("/api/removeUserReply_onFakePosts", async function(req, res) {
     const filter = { userid: req.body.userid };
     const update = {
       $pull: {
-        'userInteractions.replies.onFakePosts': { 
-        reply_content: req.body.reply_content,
-        reply_fake_post: req.body.reply_fake_post }
+        'userInteractions.replies.onFakePosts': replyPullFilter(req.body, {
+          reply_content: req.body.reply_content,
+          reply_fake_post: req.body.reply_fake_post
+        })
       }
     };
     const result = await collection.updateOne(filter, update);
@@ -818,21 +922,25 @@ app.post("/api/removeUserReply_onFakePosts", async function(req, res) {
 
 // Update user replies for comments
 app.post("/api/updateUserReply_onComments", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
     const database = client.db('reddit');
     const collection = database.collection('users');
     const filter = { userid: req.body.userid };
+    const reply = req.body.user_reply_onComments[0];
     const update = {
       $push: {
-        'userInteractions.replies.onComments': {
-          action_date: req.body.user_reply_onComments[0].action_date,
-          reply_to: req.body.user_reply_onComments[0].reply_to,  // The comment being replied to
-          reply_content: req.body.user_reply_onComments[0].reply_content.trimEnd(),  // The user's reply
-          reply_post: req.body.user_reply_onComments[0].reply_post
-        }
+        'userInteractions.replies.onComments': compactObject({
+          reply_id: reply.reply_id,
+          action_date: reply.action_date,
+          reply_to: reply.reply_to,
+          reply_content: reply.reply_content.trimEnd(),
+          reply_post: reply.reply_post,
+          target_comment_context: reply.target_comment_context,
+          target_comment_author: reply.target_comment_author
+        })
       }
     };
     const result = await collection.updateOne(filter, update);
@@ -847,7 +955,7 @@ app.post("/api/updateUserReply_onComments", async function(req, res) {
 
 // Remove user replies for comments
 app.post("/api/removeUserReply_onComments", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -856,11 +964,11 @@ app.post("/api/removeUserReply_onComments", async function(req, res) {
     const filter = { userid: req.body.userid };
     const update = {
       $pull: {
-        'userInteractions.replies.onComments': { 
-          reply_content: req.body.reply_content,  // Ensure it matches the comment
-          reply_to: req.body.reply_to, 
-          reply_post:  req.body.reply_post        // Ensure it matches the comment the user replied t
-           }
+        'userInteractions.replies.onComments': replyPullFilter(req.body, {
+          reply_content: req.body.reply_content,
+          reply_to: req.body.reply_to,
+          reply_post: req.body.reply_post
+        })
       }
     };
     const result = await collection.updateOne(filter, update);
@@ -875,21 +983,25 @@ app.post("/api/removeUserReply_onComments", async function(req, res) {
 
 // Update user replies for fake comments
 app.post("/api/updateUserReply_onFakeComments", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
     const database = client.db('reddit');
     const collection = database.collection('users');
     const filter = { userid: req.body.userid };
+    const reply = req.body.user_reply_onFakeComments[0];
     const update = {
       $push: {
-        'userInteractions.replies.onFakeComments': {
-          action_date: req.body.user_reply_onFakeComments[0].action_date,
-          reply_to: req.body.user_reply_onFakeComments[0].reply_to,  // The fake comment being replied to
-          reply_content: req.body.user_reply_onFakeComments[0].reply_content.trimEnd(),  // The user's reply to the fake comment
-          reply_fake_post: req.body.user_reply_onFakeComments[0].reply_fake_post
-        }
+        'userInteractions.replies.onFakeComments': compactObject({
+          reply_id: reply.reply_id,
+          action_date: reply.action_date,
+          reply_to: reply.reply_to,
+          reply_content: reply.reply_content.trimEnd(),
+          reply_fake_post: reply.reply_fake_post,
+          target_comment_context: reply.target_comment_context,
+          target_comment_author: reply.target_comment_author
+        })
       }
     };
     const result = await collection.updateOne(filter, update);
@@ -904,7 +1016,7 @@ app.post("/api/updateUserReply_onFakeComments", async function(req, res) {
 
 // Remove user replies for fake comments
 app.post("/api/removeUserReply_onFakeComments", async function(req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -913,11 +1025,11 @@ app.post("/api/removeUserReply_onFakeComments", async function(req, res) {
     const filter = { userid: req.body.userid };
     const update = {
       $pull: {
-        'userInteractions.replies.onFakeComments': {
+        'userInteractions.replies.onFakeComments': replyPullFilter(req.body, {
           reply_to: req.body.reply_to,
           reply_fake_post: req.body.reply_fake_post, 
           reply_content: req.body.reply_content
-         }
+        })
       }
     };
     const result = await collection.updateOne(filter, update);
@@ -933,7 +1045,7 @@ app.post("/api/removeUserReply_onFakeComments", async function(req, res) {
 
 ////// read user's action on fake post includes fake comments only ///////////////
 app.get("/api/getUserVotes_onFakePosts", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -947,7 +1059,7 @@ app.get("/api/getUserVotes_onFakePosts", async function (req, res) {
     if (user) {
       return res.json(user);
     } else {
-      return res.status(404).json({ error: "User not found" });
+      return res.json(emptyUserInteractionsResponse("votes", "onFakePosts"));
     }
   } catch (err) {
     console.error(err);
@@ -958,7 +1070,7 @@ app.get("/api/getUserVotes_onFakePosts", async function (req, res) {
 });
 
 app.get("/api/getUserVotes_onFakeComments", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -972,7 +1084,7 @@ app.get("/api/getUserVotes_onFakeComments", async function (req, res) {
     if (user) {
       return res.json(user);
     } else {
-      return res.status(404).json({ error: "User not found" });
+      return res.json(emptyUserInteractionsResponse("votes", "onFakeComments"));
     }
   } catch (err) {
     console.error(err);
@@ -983,7 +1095,7 @@ app.get("/api/getUserVotes_onFakeComments", async function (req, res) {
 });
 
 app.get("/api/getUserComments_onFakePosts", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -997,7 +1109,7 @@ app.get("/api/getUserComments_onFakePosts", async function (req, res) {
     if (user) {
       return res.json(user);
     } else {
-      return res.status(404).json({ error: "User not found" });
+      return res.json(emptyUserInteractionsResponse("replies", "onFakePosts"));
     }
   } catch (err) {
     console.error(err);
@@ -1008,7 +1120,7 @@ app.get("/api/getUserComments_onFakePosts", async function (req, res) {
 });
 
 app.get("/api/getUserComments_onFakeComments", async function (req, res) {
-  const client = new MongoClient(uri, { useUnifiedTopology: true });
+  const client = createMongoClient();
 
   try {
     await client.connect();
@@ -1022,7 +1134,7 @@ app.get("/api/getUserComments_onFakeComments", async function (req, res) {
     if (user) {
       return res.json(user);
     } else {
-      return res.status(404).json({ error: "User not found" });
+      return res.json(emptyUserInteractionsResponse("replies", "onFakeComments"));
     }
   } catch (err) {
     console.error(err);
