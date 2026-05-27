@@ -9,6 +9,7 @@ const { MongoClient } = require("mongodb");
 
 const uri = process.env.MONGODB_URI;
 const adminExportToken = process.env.ADMIN_EXPORT_TOKEN;
+const experimentGroups = ["mlen", "mley", "mhen", "mhey"];
 
 function createMongoClient() {
   if (!uri) {
@@ -74,6 +75,22 @@ function replyPullFilter(body, fallback) {
   return fallback;
 }
 
+async function chooseLeastAssignedGroup(users) {
+  const counts = Object.fromEntries(experimentGroups.map(group => [group, 0]));
+  const groupCounts = await users.aggregate([
+    { $match: { usergroup: { $in: experimentGroups } } },
+    { $group: { _id: "$usergroup", count: { $sum: 1 } } }
+  ]).toArray();
+
+  groupCounts.forEach(item => {
+    counts[item._id] = item.count;
+  });
+
+  const lowestCount = Math.min(...Object.values(counts));
+  const leastAssignedGroups = experimentGroups.filter(group => counts[group] === lowestCount);
+  return leastAssignedGroups[Math.floor(Math.random() * leastAssignedGroups.length)];
+}
+
 // Use the express.json middleware to parse JSON bodies
 app.use(function(req, res, next) {
   res.header("Access-Control-Allow-Origin", "*");
@@ -134,15 +151,19 @@ app.post("/api/insert", async function (req, res) {
     const db = client.db("reddit");
     const users = db.collection("users");
 
-    const { userid, usergroup } = req.body || {};
+    const { userid } = req.body || {};
     if (!userid) {
       return res.status(400).json({ error: "userid is required" });
     }
 
     const now = new Date();
+    const existingUser = await users.findOne({ userid }, { projection: { usergroup: 1 } });
+    const assignedGroup = existingUser && existingUser.usergroup
+      ? existingUser.usergroup
+      : await chooseLeastAssignedGroup(users);
 
     // 核心点：
-    // 1) $setOnInsert: 只在“第一次创建用户”时写入 usergroup
+    // 1) $setOnInsert: 只在“第一次创建用户”时写入 backend-balanced usergroup
     // 2) $set: 每次都更新 lastSeenAt（但不动 usergroup）
     // 3) findOneAndUpdate: 直接把“数据库里的那条用户”拿回来用于返回 usergroup
     const result = await users.findOneAndUpdate(
@@ -150,7 +171,7 @@ app.post("/api/insert", async function (req, res) {
       {
         $setOnInsert: {
           ...req.body,              // 你原本就是把整个 body 存进去
-          usergroup: usergroup,     // 确保首次写入 usergroup
+          usergroup: assignedGroup,  // 确保首次写入 backend-balanced group
           createdAt: now,
         },
         $set: {
